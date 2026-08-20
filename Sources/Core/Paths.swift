@@ -23,8 +23,20 @@ public enum Paths {
             .appendingPathComponent("Library/Logs/claude-cron")
     }
 
+    /// Pointing this elsewhere puts the app in sandbox mode: plists are written
+    /// to the given directory and never handed to launchctl, so a throwaway
+    /// instance (tests, demos, screenshots) cannot touch the real user domain.
+    public static var launchAgentsOverride: String? {
+        ProcessInfo.processInfo.environment["CLAUDE_CRON_LAUNCH_AGENTS"]
+    }
+
+    public static var isSandboxed: Bool { launchAgentsOverride != nil }
+
     public static var launchAgentsDir: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+        if let override = launchAgentsOverride {
+            return URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/LaunchAgents")
     }
 

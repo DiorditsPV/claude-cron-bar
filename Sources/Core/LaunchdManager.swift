@@ -26,6 +26,9 @@ public struct LaunchdManager {
 
     @discardableResult
     func launchctl(_ args: [String]) -> CommandResult {
+        if Paths.isSandboxed {
+            return CommandResult(status: 0, output: "sandboxed: launchctl \(args.joined(separator: " "))")
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         process.arguments = args
@@ -66,7 +69,10 @@ public struct LaunchdManager {
     }
 
     public func isLoaded(id: String) -> Bool {
-        launchctl(["print", "\(domain)/\(Paths.label(id))"]).status == 0
+        // Nothing is ever registered with launchd in sandbox mode, so runs
+        // started from the UI are spawned by the app itself.
+        guard !Paths.isSandboxed else { return false }
+        return launchctl(["print", "\(domain)/\(Paths.label(id))"]).status == 0
     }
 
     public func bootstrap(id: String) throws {

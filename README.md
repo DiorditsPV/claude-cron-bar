@@ -2,12 +2,27 @@
 
 A macOS menu bar app for scheduling and monitoring recurring [Claude Code](https://claude.com/claude-code) jobs - `claude -p` prompts that run unattended on a cron schedule, powered by native `launchd` under the hood. Arbitrary shell commands are supported too, so it doubles as a lightweight launchd GUI.
 
+<p align="center">
+  <img src="docs/screenshots/panel.png" width="340" alt="ClaudeCron menu bar panel: jobs grouped by folder, status dots, last and next run, inline run/pause buttons">
+</p>
+
 - **Menu bar dashboard** - every job with its status dot, last run outcome, next run time, and inline run/pause/stop buttons.
 - **Manager window** - create and edit jobs, browse run history, read logs and results in place.
 - **Airflow-style schedules** - plain 5-field cron expressions (`0 9,14,18 * * 1-5`) plus `@hourly` / `@daily` / `@weekly` aliases, translated into launchd `StartCalendarInterval` (including the cron day-of-month OR day-of-week rule, which launchd alone cannot express).
 - **launchd does the scheduling** - jobs fire even when the app is not running. The app is a control panel, not a daemon.
 - **Failure notifications** - from the app when it runs, via `osascript` fallback when it does not.
 - **Import from Claude Desktop** - one click pulls your scheduled tasks (routines) out of the desktop app's local storage (`claude-code-sessions/**/scheduled-tasks.json` + their SKILL.md prompts) into ClaudeCron jobs. Imported jobs arrive paused so they never double-run while the original routine is still active.
+
+<table>
+  <tr>
+    <td><img src="docs/screenshots/manager-config.png" alt="Manager window, Config tab: job name, type, group, color and the prompt editor"></td>
+    <td><img src="docs/screenshots/manager-runs.png" alt="Manager window, Runs tab: run history with a failed run selected and its log shown in place"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Manager - job config</sub></td>
+    <td align="center"><sub>Manager - run history and log</sub></td>
+  </tr>
+</table>
 
 ## How it works
 
@@ -79,6 +94,8 @@ make install  # build, ad-hoc sign, install to ~/Applications
 open ~/Applications/ClaudeCron.app
 ```
 
+`make demo` launches a throwaway instance against seeded sample jobs (`/tmp/claude-cron-demo`) - handy for trying the UI without scheduling anything. Setting `CLAUDE_CRON_LAUNCH_AGENTS` puts the app in sandbox mode: plists are written there and never handed to `launchctl`, so a demo cannot touch the real user domain. `make screenshots` uses the same sandbox to regenerate the pictures above.
+
 ## Environment overrides
 
 | Variable | Purpose |
@@ -86,6 +103,8 @@ open ~/Applications/ClaudeCron.app
 | `CLAUDE_CRON_CONFIG` | config dir (default `~/.config/claude-cron`) |
 | `CLAUDE_CRON_LOGS` | logs dir (default `~/Library/Logs/claude-cron`) |
 | `CLAUDE_CRON_BIN` | claude binary (default `claude` from `PATH`, with common fallbacks) |
+| `CLAUDE_CRON_LAUNCH_AGENTS` | sandbox: write plists here instead of `~/Library/LaunchAgents` and skip `launchctl` |
+| `CLAUDE_CRON_SCREENSHOTS` | self-portrait mode: render panel and Manager into PNGs in this dir and quit |
 
 ## Notes
 

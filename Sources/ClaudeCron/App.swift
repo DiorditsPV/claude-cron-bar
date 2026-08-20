@@ -6,10 +6,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         Notifier.setup(delegate: self)
-        if !UserDefaults.standard.bool(forKey: "didOfferLoginItem") {
+        if !Paths.isSandboxed, !UserDefaults.standard.bool(forKey: "didOfferLoginItem") {
             UserDefaults.standard.set(true, forKey: "didOfferLoginItem")
             try? LoginItem.set(true)
         }
+        Screenshots.runIfRequested()
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter,
