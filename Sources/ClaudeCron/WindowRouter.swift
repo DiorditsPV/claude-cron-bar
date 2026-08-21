@@ -54,7 +54,10 @@ final class WindowRouter: NSObject {
             w.setContentSize(NSSize(width: 780, height: 560))
             w.isReleasedWhenClosed = false
             w.hidesOnDeactivate = false
-            w.level = .floating
+            // Ordinary window level: the Manager is a place you go to, not an
+            // overlay that sits on top of whatever you are actually doing.
+            // The collection behaviour still brings it to the space you are in
+            // (including over a full-screen app) instead of switching spaces.
             w.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
             w.center()
             window = w
