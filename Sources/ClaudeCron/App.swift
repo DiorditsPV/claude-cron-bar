@@ -5,6 +5,13 @@ import UserNotifications
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        // First-launch position for the status item: close to the clock, so it
+        // does not land in the notch's blind spot on a crowded menu bar. A user
+        // who drags it elsewhere overrides this - registered defaults lose to
+        // anything macOS later persists for the item.
+        UserDefaults.standard.register(defaults: [
+            "NSStatusItem Preferred Position Item-0": 140.0,
+        ])
         Notifier.setup(delegate: self)
         if !Paths.isSandboxed, !UserDefaults.standard.bool(forKey: "didOfferLoginItem") {
             UserDefaults.standard.set(true, forKey: "didOfferLoginItem")
