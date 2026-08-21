@@ -28,6 +28,12 @@ A macOS menu bar app for scheduling and monitoring recurring [Claude Code](https
     <td align="center"><sub>Manager - job config</sub></td>
     <td align="center"><sub>Manager - run history and log</sub></td>
   </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/manager-delivery.png" alt="Manager window, Delivery section: switches for Telegram run status, Telegram job output and the macOS notification"></td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center"><sub>Delivery - what a run sends, decided here rather than in the prompt</sub></td>
+  </tr>
 </table>
 
 ## How it works

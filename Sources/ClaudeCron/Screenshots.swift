@@ -62,31 +62,72 @@ enum Screenshots {
             manager.setFrameTopLeftPoint(NSPoint(x: area.minX + 420, y: area.maxY - 40))
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+        // Each shot needs the previous state to settle first, so the sequence is a
+        // chain of delayed steps rather than one block: capture the top of the form,
+        // scroll, capture the delivery switches, only then switch job and tab.
+        step(after: 1.6) {
             capture(panel, to: dir.appendingPathComponent("panel.png"))
             if let manager = managerWindow() {
                 capture(manager, to: dir.appendingPathComponent("manager-config.png"))
+                scrollFormToBottom(manager)
             }
 
-            // --- manager: run history of the job whose last run failed, log selected
-            let failedJob = store.jobs.first { spec in
-                store.runs(for: spec.id).first?.exitCode.map { $0 != 0 } ?? false
-            } ?? store.jobs.first
-            if let job = failedJob {
-                state.draft = nil
-                state.selectedJobID = job.id
-                state.tab = .runs
-                state.selectedRunID = store.runs(for: job.id).first?.id
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            step(after: 0.8) {
                 if let manager = managerWindow() {
-                    capture(manager, to: dir.appendingPathComponent("manager-runs.png"))
+                    capture(manager, to: dir.appendingPathComponent("manager-delivery.png"))
                 }
-                panel.orderOut(nil)
-                finish()
+
+                // --- run history of the job whose last run failed, with its log open
+                let failed = store.jobs.first { spec in
+                    store.runs(for: spec.id).first?.exitCode.map { $0 != 0 } ?? false
+                } ?? store.jobs.first
+                if let job = failed {
+                    state.draft = nil
+                    state.selectedJobID = job.id
+                    state.tab = .runs
+                    state.selectedRunID = store.runs(for: job.id).first?.id
+                }
+
+                step(after: 1.2) {
+                    if let manager = managerWindow() {
+                        capture(manager, to: dir.appendingPathComponent("manager-runs.png"))
+                    }
+                    panel.orderOut(nil)
+                    finish()
+                }
             }
         }
+    }
+
+    private static func step(after seconds: Double, _ body: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: body)
+    }
+
+    /// Scrolls the config form (not the sidebar, not the prompt editor) to its end.
+    /// Picked by geometry and content height: the form is the tall scroller on the
+    /// right-hand side of the split view.
+    private static func scrollFormToBottom(_ window: NSWindow) {
+        guard let root = window.contentView else { return }
+        var candidates: [NSScrollView] = []
+        func walk(_ view: NSView) {
+            if let scroll = view as? NSScrollView { candidates.append(scroll) }
+            view.subviews.forEach(walk)
+        }
+        walk(root)
+
+        // Position does not tell the form apart from the sidebar - both report x=0
+        // through the split view. Overflow does: only the form has more content than
+        // it can show.
+        let form = candidates
+            .map { ($0, ($0.documentView?.frame.height ?? 0) - $0.contentSize.height) }
+            .filter { $0.1 > 1 }
+            .max { $0.1 < $1.1 }?.0
+
+        guard let form, let doc = form.documentView else { return }
+        let maxY = max(0, doc.frame.height - form.contentSize.height)
+        form.contentView.scroll(to: NSPoint(x: 0, y: maxY))
+        form.reflectScrolledClipView(form.contentView)
+        form.displayIfNeeded()
     }
 
     private static func managerWindow() -> NSWindow? {

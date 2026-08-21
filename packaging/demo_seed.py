@@ -24,7 +24,7 @@ JOBS = [
         "prompt": "Summarize yesterday's commits across my active repositories "
                   "into a short standup update: what moved, what is blocked, "
                   "what I plan to pick up next. Finish with a three-line summary.",
-        "workdir": "~/dev", "telegramNotify": True, "notifyOnSuccess": False,
+        "workdir": "~/dev", "tgStatus": True, "tgOutput": True, "notifyOnSuccess": False,
         "model": "sonnet", "effort": None,
     },
     {
@@ -33,14 +33,14 @@ JOBS = [
         "prompt": "Build a weekly review from this week's work: shipped items, "
                   "open threads, and anything that slipped. Save the report as "
                   "$CLAUDE_CRON_OUTBOX/01-review.md so it lands in Telegram.",
-        "workdir": "~/dev", "telegramNotify": True, "notifyOnSuccess": False,
+        "workdir": "~/dev", "tgStatus": True, "tgOutput": True, "notifyOnSuccess": False,
         "model": None, "effort": "high",
     },
     {
         "id": "repo-sync", "name": "Repo sync", "group": "maintenance",
         "color": "green", "kind": "shell", "schedule": "*/30 * * * *",
         "command": "git -C ~/dev/notes pull --ff-only && echo synced",
-        "workdir": "~/dev", "telegramNotify": False, "notifyOnSuccess": False,
+        "workdir": "~/dev", "tgStatus": True, "tgOutput": False, "notifyOnSuccess": False,
         "model": None, "effort": None,
     },
     {
@@ -48,7 +48,7 @@ JOBS = [
         "color": "orange", "kind": "claude", "schedule": "0 3 * * 1",
         "prompt": "Audit dependencies for known advisories and pins that drifted. "
                   "Report only actionable findings, newest advisories first.",
-        "workdir": "~/dev", "telegramNotify": False, "notifyOnSuccess": True,
+        "workdir": "~/dev", "tgStatus": False, "tgOutput": False, "notifyOnSuccess": True,
         "model": None, "effort": None,
     },
     {
@@ -56,7 +56,7 @@ JOBS = [
         "color": None, "kind": "claude", "schedule": "0 */4 * * *",
         "prompt": "Triage my notes inbox: file each new note under the right "
                   "topic, merge duplicates, and list anything that needs a decision.",
-        "workdir": "~/dev", "telegramNotify": False, "notifyOnSuccess": False,
+        "workdir": "~/dev", "tgStatus": True, "tgOutput": False, "notifyOnSuccess": False,
         "model": "haiku", "effort": "low",
     },
 ]
@@ -103,7 +103,8 @@ for job in JOBS:
         "schedule": job["schedule"], "model": job["model"],
         "effort": job["effort"], "extraArgs": "", "skipPermissions": True,
         "notifyOnSuccess": job["notifyOnSuccess"],
-        "telegramNotify": job["telegramNotify"], "enabled": True,
+        "telegramStatus": job["tgStatus"], "telegramOutput": job["tgOutput"],
+        "enabled": True,
         "color": job["color"],
         "createdAt": (now - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "updatedAt": (now - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ"),
