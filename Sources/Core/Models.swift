@@ -19,8 +19,13 @@ public struct JobSpec: Codable, Identifiable, Equatable, Sendable {
     public var group: String?
     public var color: String?
     public var skipPermissions: Bool
+    /// Delivery: which channel carries what. A channel that can only report the
+    /// fact of a run (the macOS notification) has one switch; Telegram can also
+    /// carry the job's output, so it has two. A failure is reported regardless -
+    /// a scheduled job failing in silence is worse than one extra message.
     public var notifyOnSuccess: Bool
-    public var telegramNotify: Bool
+    public var telegramStatus: Bool
+    public var telegramOutput: Bool
     public var enabled: Bool
     public var createdAt: Date
     public var updatedAt: Date
@@ -39,7 +44,8 @@ public struct JobSpec: Codable, Identifiable, Equatable, Sendable {
                 color: String? = nil,
                 skipPermissions: Bool = true,
                 notifyOnSuccess: Bool = false,
-                telegramNotify: Bool = false,
+                telegramStatus: Bool = false,
+                telegramOutput: Bool = false,
                 enabled: Bool = true,
                 createdAt: Date = Date(),
                 updatedAt: Date = Date()) {
@@ -57,13 +63,17 @@ public struct JobSpec: Codable, Identifiable, Equatable, Sendable {
         self.color = color
         self.skipPermissions = skipPermissions
         self.notifyOnSuccess = notifyOnSuccess
-        self.telegramNotify = telegramNotify
+        self.telegramStatus = telegramStatus
+        self.telegramOutput = telegramOutput
         self.enabled = enabled
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
 
     // Tolerant decoding so hand-edited spec files with omitted fields stay valid.
+    /// Key of the pre-split delivery flag, kept for reading old specs only.
+    private enum LegacyKeys: String, CodingKey { case telegramNotify }
+
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(String.self, forKey: .id)
@@ -80,7 +90,11 @@ public struct JobSpec: Codable, Identifiable, Equatable, Sendable {
         color = try c.decodeIfPresent(String.self, forKey: .color)
         skipPermissions = try c.decodeIfPresent(Bool.self, forKey: .skipPermissions) ?? true
         notifyOnSuccess = try c.decodeIfPresent(Bool.self, forKey: .notifyOnSuccess) ?? false
-        telegramNotify = try c.decodeIfPresent(Bool.self, forKey: .telegramNotify) ?? false
+        // telegramNotify predates the split and meant "status and output".
+        let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+        let legacyTelegram = try legacy.decodeIfPresent(Bool.self, forKey: .telegramNotify) ?? false
+        telegramStatus = try c.decodeIfPresent(Bool.self, forKey: .telegramStatus) ?? legacyTelegram
+        telegramOutput = try c.decodeIfPresent(Bool.self, forKey: .telegramOutput) ?? legacyTelegram
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt

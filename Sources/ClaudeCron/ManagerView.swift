@@ -218,6 +218,17 @@ struct ConfigForm: View {
         return nil
     }
 
+    /// Says in words what a run will send, so the two switches do not have to be
+    /// read as a truth table.
+    private var deliveryHint: String {
+        switch (form.telegramStatus, form.telegramOutput) {
+        case (true, true): return "A run sends a status line and the job's output."
+        case (true, false): return "A run sends a status line only - name, outcome, duration."
+        case (false, true): return "A run sends the job's output with no status line - for reports meant to be read or forwarded as they are."
+        case (false, false): return "Nothing is sent on a successful run; a failure still is."
+        }
+    }
+
     private var cronResult: Result<[Date], Error> {
         do {
             let schedule = try CronSchedule.parse(form.schedule)
@@ -347,18 +358,26 @@ struct ConfigForm: View {
             }
 
             Section {
-                Toggle("Notify on success", isOn: $form.notifyOnSuccess)
-                Toggle("Send result to Telegram", isOn: $form.telegramNotify)
-                if form.telegramNotify && !telegramConfigured {
+                Toggle("Telegram: run status", isOn: $form.telegramStatus)
+                Toggle("Telegram: job output", isOn: $form.telegramOutput)
+                Toggle("macOS notification on success", isOn: $form.notifyOnSuccess)
+                if (form.telegramStatus || form.telegramOutput) && !telegramConfigured {
                     Text("Telegram is not configured yet - set the bot token and chat ID via the gear button")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
-                if form.telegramNotify {
-                    Text("Default: status + the job's stdout. For a richer delivery, have the job save files into $CLAUDE_CRON_OUTBOX - .md/.txt go out as messages, other files as attachments.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(deliveryHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Delivery")
+            } footer: {
+                Text("The message is whatever the job prints - its prompt needs to say nothing about Telegram. Markdown in the output becomes formatting, files left in $CLAUDE_CRON_OUTBOX ride along as attachments. A failed run is always reported, whatever is switched on here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle("Enabled (scheduled)", isOn: $form.enabled)
             }
 

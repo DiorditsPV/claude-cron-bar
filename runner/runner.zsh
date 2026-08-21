@@ -41,7 +41,11 @@ emit("JOB_EFFORT", spec.get("effort") or "")
 emit("JOB_EXTRA", spec.get("extraArgs") or "")
 emit("JOB_SKIP_PERMS", "1" if spec.get("skipPermissions", True) else "0")
 emit("JOB_NOTIFY_SUCCESS", "1" if spec.get("notifyOnSuccess") else "0")
-emit("JOB_TG", "1" if spec.get("telegramNotify") else "0")
+# Delivery is two independent switches; a spec from before them carries
+# telegramNotify, which meant "status and output".
+legacy = spec.get("telegramNotify")
+emit("JOB_TG_STATUS", "1" if spec.get("telegramStatus", legacy) else "0")
+emit("JOB_TG_OUTPUT", "1" if spec.get("telegramOutput", legacy) else "0")
 emit("TG_TOKEN", tg.get("botToken") or "")
 emit("TG_CHAT", tg.get("chatID") or "")
 emit("TG_API", (tg.get("apiBase") or "").strip() or "https://api.telegram.org")
@@ -55,10 +59,9 @@ RUN_DIR="$JOB_DIR/$RUN_ID"
 RUNS="$JOB_DIR/runs.jsonl"
 mkdir -p "$RUN_DIR"
 
-# Anything the job saves here is delivered to Telegram after a successful
-# run (text files as messages, .tgh as an HTML-formatted message, the rest
-# as documents) when telegramNotify is enabled; an empty outbox falls back
-# to the stdout summary.
+# Files the job saves here ride along to Telegram after a successful run, as
+# attachments, when delivery of the output is enabled. The message itself is
+# the job's own output - the outbox is for files, not for text.
 export CLAUDE_CRON_OUTBOX="$RUN_DIR/outbox"
 mkdir -p "$CLAUDE_CRON_OUTBOX"
 
@@ -70,8 +73,12 @@ EXIT_CODE=1
 finish() {
     local dur=$(( $(date +%s) - START_EPOCH ))
     print -r -- "{\"job\":\"$SLUG\",\"run\":\"$RUN_ID\",\"event\":\"finish\",\"ts\":\"$(ts)\",\"exit\":$EXIT_CODE,\"duration\":$dur}" >> "$RUNS"
-    if [[ "$JOB_TG" == "1" && -n "$TG_TOKEN" && -n "$TG_CHAT" ]]; then
+    # A failure is louder than the preset: a job that broke is reported even
+    # when both switches are off, otherwise a scheduled job can fail in silence.
+    if [[ ( "$JOB_TG_STATUS" == "1" || "$JOB_TG_OUTPUT" == "1" || $EXIT_CODE -ne 0 ) \
+          && -n "$TG_TOKEN" && -n "$TG_CHAT" ]]; then
         JOB_NAME="$JOB_NAME" EXIT_CODE="$EXIT_CODE" DUR="$dur" RUN_DIR="$RUN_DIR" \
+        TG_STATUS="$JOB_TG_STATUS" TG_OUTPUT="$JOB_TG_OUTPUT" \
         TG_TOKEN="$TG_TOKEN" TG_CHAT="$TG_CHAT" TG_API="$TG_API" TG_PROXY="$TG_PROXY" \
         /usr/bin/python3 - >> "$RUN_DIR/run.log" 2>&1 <<'PY'
 import html, json, os, re, time, urllib.request, uuid
@@ -105,6 +112,47 @@ def send_message(text, parse=None):
         data=json.dumps(payload).encode(),
         headers={"Content-Type": "application/json"})
     opener.open(request, timeout=20)
+
+# --- markdown -> Telegram HTML ------------------------------------------------
+#
+# Telegram accepts a short whitelist of tags, and one stray "<" or "&" makes it
+# reject the whole message. So: pull code out first (it must survive verbatim),
+# escape everything else, then turn a small markdown subset into tags. Doing it
+# here rather than in the job's prompt is the point - a prompt should describe
+# the work, not the transport.
+
+FENCE_RE = re.compile(r"```[^\n]*\n(.*?)\n?```", re.S)
+INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
+LINK_RE = re.compile(r"\[([^\]\n]+)\]\((https?://[^)\s]+)\)")
+BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
+ITALIC_RE = re.compile(r"(?<![*\w])\*([^*\n]+)\*(?!\w)")
+UNDER_ITALIC_RE = re.compile(r"(?<![_\w])_([^_\n]+)_(?!\w)")
+HEADING_RE = re.compile(r"(?m)^#{1,6}[ \t]+(.+)$")
+
+def md_to_html(text):
+    kept = []
+
+    def keep(fragment):
+        kept.append(fragment)
+        return f"\x00{len(kept) - 1}\x00"
+
+    text = FENCE_RE.sub(
+        lambda m: keep("<pre>" + html.escape(m.group(1), quote=False) + "</pre>"), text)
+    text = INLINE_CODE_RE.sub(
+        lambda m: keep("<code>" + html.escape(m.group(1), quote=False) + "</code>"), text)
+
+    text = html.escape(text, quote=False)
+
+    text = LINK_RE.sub(lambda m: keep(f'<a href="{m.group(2)}">{m.group(1)}</a>'), text)
+    text = BOLD_RE.sub(r"<b>\1</b>", text)
+    text = ITALIC_RE.sub(r"<i>\1</i>", text)
+    text = UNDER_ITALIC_RE.sub(r"<i>\1</i>", text)
+    text = HEADING_RE.sub(r"<b>\1</b>", text)
+
+    for i, fragment in enumerate(kept):
+        text = text.replace(f"\x00{i}\x00", fragment)
+    return text
+
 
 TAG_RE = re.compile(r"<[^>]+>")
 
@@ -151,17 +199,15 @@ mins, secs = divmod(dur, 60)
 took = f"{mins}m{secs:02d}s" if mins else f"{secs}s"
 name = os.environ["JOB_NAME"]
 
-TEXT_EXT = {".md", ".txt", ".text", ".log"}
-# A .tgh file carries Telegram-flavoured HTML (<b>, <i>, <a href>): it is
-# passed through untouched and switches the whole message to parse_mode
-# HTML, which also means plain text files joining it have to be escaped.
-HTML_EXT = {".tgh"}
+want_status = os.environ.get("TG_STATUS") == "1"
+want_output = os.environ.get("TG_OUTPUT") == "1"
+
 outbox = os.path.join(run_dir, "outbox")
-entries = []
-if exit_code == 0 and os.path.isdir(outbox):
-    entries = sorted(
-        f for f in os.listdir(outbox)
-        if not f.startswith(".") and os.path.isfile(os.path.join(outbox, f)))
+attachments = []
+if exit_code == 0 and want_output and os.path.isdir(outbox):
+    attachments = [
+        os.path.join(outbox, f) for f in sorted(os.listdir(outbox))
+        if not f.startswith(".") and os.path.isfile(os.path.join(outbox, f))]
 
 sent = failed = 0
 
@@ -174,49 +220,45 @@ def attempt(what, fn, *args):
         failed += 1
         print(f"== telegram: {what} failed: {e}")
 
-if entries:
-    as_html = any(os.path.splitext(e)[1].lower() in HTML_EXT for e in entries)
-    esc = (lambda s: html.escape(s, quote=False)) if as_html else (lambda s: s)
-    stream = esc(f"✅ {name} · ok · {took}")
-    docs = []
-    for entry in entries:
-        path = os.path.join(outbox, entry)
-        ext = os.path.splitext(entry)[1].lower()
-        if ext in TEXT_EXT or ext in HTML_EXT:
-            try:
-                with open(path, encoding="utf-8", errors="replace") as f:
-                    body = f.read().strip()
-                stream += "\n\n" + (body if ext in HTML_EXT else esc(body))
-            except Exception as e:
-                print(f"== telegram: cannot read {entry}: {e}")
-        elif os.path.getsize(path) > 49_000_000:
-            print(f"== telegram: {entry} skipped (over 50MB)")
-        else:
-            docs.append(path)
-    send = send_html if as_html else send_message
-    parts = chunk(stream)
+# --- what goes out -----------------------------------------------------------
+#
+# The job prints what a human should read; nothing in its prompt knows about
+# Telegram. Markup is this script's job: a small markdown subset becomes
+# Telegram HTML and everything else is escaped, so a stray "<" or "&" in the
+# output cannot make the API reject the message.
+
+status_line = (f"✅ {name} · ok · {took}" if exit_code == 0
+               else f"❌ {name} · exit {exit_code} · {took}")
+
+if exit_code == 0:
+    body_md = read_tail("result.md", 6000).strip() if want_output else ""
+else:
+    # A failure carries its evidence regardless of the switches.
+    result = read_tail("result.md", 6000).strip()
+    log_tail = "\n".join(read_tail("run.log", 4000).splitlines()[-15:])
+    body_md = (result + "\n\n" if result else "") + "log tail:\n" + log_tail
+
+pieces = []
+if want_status or exit_code != 0:
+    pieces.append(md_to_html(status_line))
+if body_md:
+    pieces.append(md_to_html(body_md))
+
+if pieces:
+    parts = chunk("\n\n".join(pieces))
     total = len(parts)
     for i, part in enumerate(parts, 1):
         if i > 1:
             time.sleep(1.1)
-        attempt(f"message {i}/{total}", send,
+        attempt(f"message {i}/{total}", send_html,
                 part if total == 1 else f"({i}/{total})\n{part}")
-    for path in docs:
-        time.sleep(1.1)
-        attempt(f"document {os.path.basename(path)}", send_document, path)
-else:
-    result = read_tail("result.md", 6000).strip()
-    if exit_code == 0:
-        head = f"✅ {name} · ok · {took}"
-        body = result or "(no output)"
-    else:
-        head = f"❌ {name} · exit {exit_code} · {took}"
-        log_tail = "\n".join(read_tail("run.log", 4000).splitlines()[-15:])
-        body = (result + "\n\n" if result else "") + "log tail:\n" + log_tail
-    text = head + "\n\n" + body
-    if len(text) > 3800:
-        text = text[:3800] + "\n…(truncated)"
-    attempt("message", send_message, text)
+
+for path in attachments:
+    if os.path.getsize(path) > 49_000_000:
+        print(f"== telegram: {os.path.basename(path)} skipped (over 50MB)")
+        continue
+    time.sleep(1.1)
+    attempt(f"document {os.path.basename(path)}", send_document, path)
 
 if failed == 0:
     print(f"== telegram: sent ({sent} item{'s' if sent != 1 else ''})")

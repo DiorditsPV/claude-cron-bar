@@ -15,6 +15,7 @@ A macOS menu bar app for scheduling and monitoring recurring [Claude Code](https
 - **Airflow-style schedules** - plain 5-field cron expressions (`0 9,14,18 * * 1-5`) plus `@hourly` / `@daily` / `@weekly` aliases, translated into launchd `StartCalendarInterval` (including the cron day-of-month OR day-of-week rule, which launchd alone cannot express).
 - **launchd does the scheduling** - jobs fire even when the app is not running. The app is a control panel, not a daemon.
 - **Failure notifications** - from the app when it runs, via `osascript` fallback when it does not.
+- **Delivery without prompt plumbing** - per job, pick whether a run sends its status, its output, or both; markup and attachments are handled for you, so a prompt describes the work and says nothing about the transport.
 - **Dock icon while it runs** - so "is it running?" has an answer, and Spotlight or the Dock has something to click: launching an already-running instance opens the Manager instead of doing nothing. Turn it off in Settings to live in the menu bar alone.
 - **Import from Claude Desktop** - one click pulls your scheduled tasks (routines) out of the desktop app's local storage (`claude-code-sessions/**/scheduled-tasks.json` + their SKILL.md prompts) into ClaudeCron jobs. Imported jobs arrive paused so they never double-run while the original routine is still active.
 
@@ -67,21 +68,25 @@ Overlap protection comes from launchd itself: a job whose previous run is still 
 
 `kind: "shell"` replaces `prompt` with `command` and runs it verbatim through `/bin/zsh -c`. `workdir` matters for Claude jobs: project-scoped skills, agents and MCP servers are picked up from the working directory's `.claude/`. `model` takes an alias (`opus`, `sonnet`, `haiku`) or a full model ID; `effort` is one of `low`/`medium`/`high`/`xhigh`/`max`.
 
-## Telegram notifications
+## Delivery
 
-Settings (gear button in the Manager) hold a bot token and chat ID (`~/.config/claude-cron/config.json`, chmod 600). Create a bot via [@BotFather](https://t.me/BotFather), message it once, and use **Detect** to pick up your chat ID; **Send Test** verifies the pipe. An optional API base override supports self-hosted bot-api proxies.
+Two switches per job decide what a run sends to Telegram: **run status** (name, outcome,
+duration) and **job output**. Any combination works, and they answer different questions -
+status alone is a heartbeat for a job whose text nobody reads, output alone is a report meant
+to be read or forwarded without a technical header on top. A failed run is always reported,
+whatever is switched on: a scheduled job failing in silence is worse than one extra message.
 
-Jobs with **Send result to Telegram** enabled post a message after every run: a status header (job name, ok/exit code, duration) plus the captured stdout - for Claude jobs that is the model's final answer, so the cleanest way to shape the message is to end the prompt with an instruction like "finish with a short summary". Failed runs attach the log tail instead. Messages are truncated to Telegram's limit. The runner does the sending, so it works with the app closed; delivery failures are recorded in the run log and never affect the job's exit code.
+The message is whatever the job prints. Nothing in a prompt needs to know about Telegram:
+markup, escaping, message-size limits and attachments are the runner's job. Markdown in the
+output becomes formatting - `**bold**`, `*italic*`, `` `code` ``, fenced blocks, links,
+`#` headings - and everything else is escaped, so a stray `<` or `&` cannot make the API
+reject the message. Files left in `$CLAUDE_CRON_OUTBOX` ride along as attachments when output
+delivery is on; the outbox is for files, not for text.
 
-For full deliveries - entire reports, rendered HTML, images - use the **outbox**: the runner exposes `$CLAUDE_CRON_OUTBOX` (a per-run directory) to the job, and after a successful run everything in it goes to the chat in filename order (`01-`, `02-`, ... prefixes control it). The extension decides the shape:
+The same section carries the macOS notification, which can only report status - it has one
+switch.
 
-| Extension | Delivery |
-|---|---|
-| `.md` `.txt` `.log` | appended to the status header and sent as messages, auto-split at Telegram's limit with `(i/n)` numbering |
-| `.tgh` | same, but passed through as Telegram-flavoured HTML (`<b>`, `<i>`, `<a href>`); a rejected message is retried as plain text so nothing is lost |
-| anything else | uploaded via `sendDocument` (up to 50 MB) |
-
-An empty outbox falls back to the stdout summary; failed runs always use the failure format. The "template" is thus the prompt itself - tell the job what to drop into the outbox.
+Settings (gear button in the Manager) hold a bot token and chat ID (`~/.config/claude-cron/config.json`, chmod 600). Create a bot via [@BotFather](https://t.me/BotFather), message it once, and use **Detect** to pick up your chat ID; **Send Test** verifies the pipe. An optional API base override supports self-hosted bot-api proxies. The runner does the sending, so it works with the app closed; delivery failures are recorded in the run log and never affect the job's exit code.
 
 ## Groups & colors
 
