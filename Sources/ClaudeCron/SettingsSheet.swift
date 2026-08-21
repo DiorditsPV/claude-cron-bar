@@ -9,6 +9,7 @@ struct SettingsSheet: View {
     @State private var proxy = ""
     @State private var status = ""
     @State private var busy = false
+    @State private var showInDock = DockPresence.isEnabled
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,6 +17,17 @@ struct SettingsSheet: View {
             Divider()
 
             Form {
+                Section {
+                    Toggle("Show in Dock", isOn: $showInDock)
+                        .onChange(of: showInDock) { _, value in DockPresence.apply(value) }
+                } header: {
+                    Text("General")
+                } footer: {
+                    Text("A Dock icon answers \"is it running?\" and gives the app somewhere to be clicked. Turn it off to live in the menu bar alone.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 Section {
                     TextField("Bot token", text: $botToken,
                               prompt: Text("123456:ABC-DEF\u{2026} (from @BotFather)"))
@@ -66,7 +78,7 @@ struct SettingsSheet: View {
             }
             .padding(12)
         }
-        .frame(width: 500, height: 360)
+        .frame(width: 500, height: 460)
         .onAppear {
             let tg = ConfigFile.load().telegram ?? TelegramConfig()
             botToken = tg.botToken

@@ -15,6 +15,7 @@ A macOS menu bar app for scheduling and monitoring recurring [Claude Code](https
 - **Airflow-style schedules** - plain 5-field cron expressions (`0 9,14,18 * * 1-5`) plus `@hourly` / `@daily` / `@weekly` aliases, translated into launchd `StartCalendarInterval` (including the cron day-of-month OR day-of-week rule, which launchd alone cannot express).
 - **launchd does the scheduling** - jobs fire even when the app is not running. The app is a control panel, not a daemon.
 - **Failure notifications** - from the app when it runs, via `osascript` fallback when it does not.
+- **Dock icon while it runs** - so "is it running?" has an answer, and Spotlight or the Dock has something to click: launching an already-running instance opens the Manager instead of doing nothing. Turn it off in Settings to live in the menu bar alone.
 - **Import from Claude Desktop** - one click pulls your scheduled tasks (routines) out of the desktop app's local storage (`claude-code-sessions/**/scheduled-tasks.json` + their SKILL.md prompts) into ClaudeCron jobs. Imported jobs arrive paused so they never double-run while the original routine is still active.
 
 <table>
@@ -114,7 +115,8 @@ open ~/Applications/ClaudeCron.app
 
 - Saving a job re-registers its launchd agent; if a run is in progress at that moment, it is terminated.
 - Deleting a job removes the agent and optionally its logs.
-- The app offers itself as a login item on first launch; jobs do not depend on it either way.
+- The app offers itself as a login item on first launch; jobs do not depend on it either way. A login-item launch stays quiet; a launch you started opens the Manager.
+- Closing the Manager leaves the app running in the menu bar - use Quit in the panel, the Dock menu or Cmd-Q to stop it.
 
 ## License
 
