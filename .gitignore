@@ -2,3 +2,4 @@
 dist/
 .DS_Store
 Sources/ClaudeCron/RunnerScript.generated.swift
+packaging/icons/AppIcon.iconset/

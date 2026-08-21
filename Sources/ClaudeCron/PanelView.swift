@@ -154,14 +154,28 @@ private struct JobRow: View {
 struct MenuBarIcon: View {
     @ObservedObject var store = JobStore.shared
 
+    private var stateName: String {
+        if store.hasUnseenFailure { return "failure" }
+        if store.runningCount > 0 { return "running" }
+        return "idle"
+    }
+
     var body: some View {
-        if store.hasUnseenFailure {
+        // Own glyph from the bundle (clock + spark, template image); SF Symbols
+        // only when the binary runs outside the .app and has no resources.
+        if let glyph = Bundle.main.image(forResource: "menubar-\(stateName)") {
+            Image(nsImage: templated(glyph))
+        } else if store.hasUnseenFailure {
             Image(systemName: "clock.badge.exclamationmark")
         } else if store.runningCount > 0 {
             Image(systemName: "clock.fill")
-                .symbolEffect(.pulse, isActive: true)
         } else {
             Image(systemName: "clock")
         }
+    }
+
+    private func templated(_ image: NSImage) -> NSImage {
+        image.isTemplate = true
+        return image
     }
 }

@@ -4,6 +4,8 @@ DIST      := dist/$(APP).app
 DEMO      := /tmp/claude-cron-demo
 SHOTS     := docs/screenshots
 GENERATED := Sources/ClaudeCron/RunnerScript.generated.swift
+ICONS     := packaging/icons
+ICNS      := $(ICONS)/AppIcon.icns
 
 CORE_SRC := $(wildcard Sources/Core/*.swift)
 APP_SRC  := $(wildcard Sources/ClaudeCron/*.swift) $(GENERATED)
@@ -11,7 +13,7 @@ TEST_SRC := Sources/CronTest/main.swift
 
 SWIFTC := swiftc -O
 
-.PHONY: all gen build test app install demo demo-stop screenshots clean
+.PHONY: all gen build test app install demo demo-stop screenshots icons clean
 
 all: app
 
@@ -31,11 +33,22 @@ test: gen
 	$(SWIFTC) $(CORE_SRC) $(TEST_SRC) -o $(BUILD)/crontest
 	$(BUILD)/crontest
 
-app: build
+# App icon and menu bar glyphs are drawn by packaging/gen_icon.swift; the
+# results are committed, this rule only fires when the generator changes.
+$(ICNS): packaging/gen_icon.swift
+	mkdir -p $(BUILD)
+	$(SWIFTC) packaging/gen_icon.swift -o $(BUILD)/genicon
+	$(BUILD)/genicon $(ICONS)
+	iconutil -c icns $(ICONS)/AppIcon.iconset -o $(ICNS)
+
+icons: $(ICNS)
+
+app: build $(ICNS)
 	rm -rf $(DIST)
 	mkdir -p $(DIST)/Contents/MacOS $(DIST)/Contents/Resources
 	cp $(BUILD)/$(APP) $(DIST)/Contents/MacOS/$(APP)
 	cp packaging/Info.plist $(DIST)/Contents/Info.plist
+	cp $(ICNS) $(ICONS)/menubar-*.png $(DIST)/Contents/Resources/
 	codesign --force -s - $(DIST)
 	@echo "Built $(DIST)"
 

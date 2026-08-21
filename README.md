@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="packaging/icons/AppIcon-512.png" width="128" alt="ClaudeCron icon">
+</p>
+
 # ClaudeCron
 
 A macOS menu bar app for scheduling and monitoring recurring [Claude Code](https://claude.com/claude-code) jobs - `claude -p` prompts that run unattended on a cron schedule, powered by native `launchd` under the hood. Arbitrary shell commands are supported too, so it doubles as a lightweight launchd GUI.
